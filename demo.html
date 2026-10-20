@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ZK Watermark Provenance — Live Demo</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #131722;
+    --panel-border: #232838;
+    --text: #e8ebf1;
+    --muted: #8b93a7;
+    --accent: #5b8cff;
+    --accent-2: #7ee0c3;
+    --ok: #4ade80;
+    --bad: #f87171;
+    --pending: #f5c451;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 50% -10%, #17203a 0%, var(--bg) 60%);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 20px 80px;
+  }
+  header {
+    max-width: 880px;
+    margin: 0 auto 28px;
+    text-align: center;
+  }
+  header h1 {
+    font-size: 1.7rem;
+    margin: 0 0 6px;
+    letter-spacing: 0.2px;
+  }
+  header p {
+    color: var(--muted);
+    margin: 0;
+    font-size: 0.95rem;
+  }
+  .controls {
+    max-width: 880px;
+    margin: 28px auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 20px;
+  }
+  select {
+    background: #0d1119;
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.95rem;
+    min-width: 220px;
+  }
+  #startBtn {
+    background: linear-gradient(135deg, var(--accent), #3f6fe0);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 14px 32px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 8px 24px rgba(91, 140, 255, 0.35);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+  }
+  #startBtn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 28px rgba(91, 140, 255, 0.45); }
+  #startBtn:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+
+  .network-tag {
+    font-size: 0.8rem;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .network-tag .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent-2);
+    box-shadow: 0 0 8px var(--accent-2);
+  }
+
+  #pipeline {
+    max-width: 880px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 18px 22px;
+    opacity: 0;
+    transform: translateY(10px);
+    animation: rise 0.4s ease forwards;
+  }
+  @keyframes rise {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .card.pending { opacity: 0.5; animation: none; transform: none; }
+  .card.error { border-color: var(--bad); }
+
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .stage-num {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: #1c2233;
+    border: 1px solid var(--panel-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .card.done .stage-num { background: var(--accent); color: white; border-color: transparent; }
+  .card.error .stage-num { background: var(--bad); color: white; border-color: transparent; }
+
+  .card-title { font-weight: 600; font-size: 1.02rem; }
+  .card-sub { color: var(--muted); font-size: 0.85rem; margin-left: 36px; margin-top: -2px; }
+  .card-body { margin-top: 14px; margin-left: 36px; position: relative; }
+
+  .images-row { display: flex; gap: 18px; flex-wrap: wrap; }
+  .image-box { text-align: center; }
+  .image-box img {
+    width: 176px; height: 176px;
+    image-rendering: pixelated;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    display: block;
+  }
+  .image-box span { display: block; margin-top: 6px; font-size: 0.78rem; color: var(--muted); }
+
+  .stat-row { display: flex; gap: 28px; flex-wrap: wrap; }
+  .stat { min-width: 100px; }
+  .stat .val { font-size: 1.6rem; font-weight: 700; }
+  .stat .label { color: var(--muted); font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat.good .val { color: var(--ok); }
+  .stat.bad .val { color: var(--bad); }
+
+  .verify-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 1rem;
+  }
+  .verify-badge.pass { background: rgba(74, 222, 128, 0.12); color: var(--ok); }
+  .verify-badge.fail { background: rgba(248, 113, 113, 0.12); color: var(--bad); }
+
+  .anchor-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 14px;
+    font-size: 0.88rem;
+  }
+  .anchor-grid dt { color: var(--muted); }
+  .anchor-grid dd { margin: 0; font-family: "Cascadia Code", Consolas, monospace; word-break: break-all; }
+  .anchor-grid a { color: var(--accent-2); text-decoration: none; }
+  .anchor-grid a:hover { text-decoration: underline; }
+
+  /* ---- crop stage: full photo -> real box -> 32x32 input ---- */
+  .crop-stage { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+  .source-col { flex: 1 1 260px; max-width: 420px; }
+  .source-wrap {
+    position: relative;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid var(--panel-border);
+    line-height: 0;
+  }
+  .source-photo { width: 100%; display: block; }
+  .crop-highlight {
+    position: absolute;
+    left: 0; top: 0; width: 100%; height: 100%;
+    border: 2px solid var(--accent-2);
+    border-radius: 2px;
+    box-shadow: 0 0 0 9999px rgba(9, 12, 18, 0);
+    opacity: 0;
+    transition:
+      left 0.9s cubic-bezier(0.4, 0, 0.2, 1),
+      top 0.9s cubic-bezier(0.4, 0, 0.2, 1),
+      width 0.9s cubic-bezier(0.4, 0, 0.2, 1),
+      height 0.9s cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 0.6s ease, opacity 0.35s ease, border-color 0.35s ease;
+  }
+  .crop-highlight.visible { opacity: 1; }
+  .crop-highlight.locked {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 9999px rgba(9, 12, 18, 0.62), 0 0 12px 2px rgba(91, 140, 255, 0.7);
+  }
+  .source-cap { margin-top: 6px; font-size: 0.78rem; color: var(--muted); line-height: 1.3; }
+  .crop-arrow { font-size: 1.6rem; color: var(--muted); flex: 0 0 auto; }
+  .crop-out img, .crop-out span { transition: opacity 0.3s ease; }
+  .flying-crop {
+    position: absolute;
+    z-index: 6;
+    image-rendering: pixelated;
+    border-radius: 6px;
+    border: 2px solid var(--accent);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    transition:
+      left 0.7s cubic-bezier(0.35, 0, 0.25, 1),
+      top 0.7s cubic-bezier(0.35, 0, 0.25, 1),
+      width 0.7s cubic-bezier(0.35, 0, 0.25, 1),
+      height 0.7s cubic-bezier(0.35, 0, 0.25, 1);
+  }
+
+  /* ---- embed stage: real bits -> encoder -> before/after slider ---- */
+  .embed-stage { display: flex; flex-direction: column; gap: 4px; }
+  .bit-panel-label, .ba-label { color: var(--muted); font-size: 0.8rem; margin-bottom: 8px; }
+  .bit-grid {
+    display: grid;
+    grid-template-columns: repeat(16, 1fr);
+    gap: 5px;
+    max-width: 520px;
+  }
+  .bit {
+    aspect-ratio: 1 / 1;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 4px;
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 0.8rem; font-weight: 700;
+    opacity: 0;
+    transform: translateY(-10px) scale(0.7);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+  .bit.in { opacity: 1; transform: none; }
+  .bit.one {
+    background: rgba(91, 140, 255, 0.22);
+    color: var(--accent);
+    border: 1px solid rgba(91, 140, 255, 0.5);
+  }
+  .bit.zero {
+    background: #10151f;
+    color: var(--muted);
+    border: 1px solid var(--panel-border);
+  }
+  .bit-grid.flow .bit {
+    opacity: 0;
+    transform: translateY(46px) scale(0.6);
+    filter: blur(1px);
+    transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.5, 0, 0.75, 0), filter 0.5s ease;
+    transition-delay: calc(var(--i) * 11ms);
+  }
+  .embed-reveal { transition: opacity 0.4s ease; }
+  .bit-strip {
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 0.82rem; letter-spacing: 2px;
+    color: var(--accent-2);
+    word-break: break-all;
+    margin-bottom: 14px;
+  }
+  .embed-note { color: var(--muted); font-size: 0.8rem; margin-top: 10px; max-width: 440px; line-height: 1.4; }
+
+  .ba-slider {
+    position: relative;
+    width: 220px; height: 220px;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--panel-border);
+    touch-action: none;
+  }
+  .ba-img {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    image-rendering: pixelated;
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+  }
+  .ba-before { clip-path: inset(0 50% 0 0); }
+  .ba-divider {
+    position: absolute; top: 0; bottom: 0; left: 50%;
+    width: 2px;
+    background: var(--accent-2);
+    box-shadow: 0 0 8px var(--accent-2);
+    transform: translateX(-1px);
+    pointer-events: none;
+  }
+  .ba-range {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    margin: 0;
+    opacity: 0;
+    cursor: ew-resize;
+  }
+  .ba-tag {
+    position: absolute; bottom: 8px;
+    font-size: 0.7rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    pointer-events: none;
+  }
+  .ba-tag-l { left: 8px; }
+  .ba-tag-r { right: 8px; }
+
+  /* ---- anchor stage: new block from the receipt ---- */
+  .new-block {
+    display: flex; gap: 14px; align-items: center;
+    background: linear-gradient(135deg, rgba(91, 140, 255, 0.14), rgba(126, 224, 195, 0.1));
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    animation: blockIn 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  @keyframes blockIn {
+    from { opacity: 0; transform: translateY(14px) scale(0.96); }
+    to { opacity: 1; transform: none; }
+  }
+  .new-block-ico { font-size: 1.7rem; line-height: 1; }
+  .new-block-top { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .new-block-num { font-size: 1.25rem; font-weight: 700; color: var(--accent-2); }
+  .new-block-hash {
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 0.8rem; word-break: break-all;
+    color: var(--text); opacity: 0.85;
+  }
+
+  .error-msg { color: var(--bad); font-family: Consolas, monospace; font-size: 0.85rem; }
+
+  .final-banner {
+    text-align: center;
+    padding: 20px;
+    color: var(--accent-2);
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f4f6fb;
+      --panel: #ffffff;
+      --panel-border: #e3e7f0;
+      --text: #171a21;
+      --muted: #6b7280;
+    }
+    body { background: radial-gradient(1200px 600px at 50% -10%, #e7edff 0%, var(--bg) 60%); }
+    #startBtn { box-shadow: 0 8px 24px rgba(91, 140, 255, 0.25); }
+    .bit.zero { background: #eef1f7; }
+    .crop-highlight.locked { box-shadow: 0 0 0 9999px rgba(20, 26, 40, 0.35), 0 0 12px 2px rgba(91, 140, 255, 0.6); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Zero-Knowledge Watermark Provenance</h1>
+  <p>Blockchain-anchored ZK verification of neural watermarks — live end-to-end run</p>
+</header>
+
+<div class="controls">
+  <select id="cropSelect"></select>
+  <button id="startBtn">▶ Start Demo</button>
+  <span class="network-tag"><span class="dot"></span><span id="networkLabel">connecting…</span></span>
+</div>
+
+<div id="pipeline"></div>
+
+<script>
+const STAGES = [
+  { key: "crop",     title: "1. Source crop",        sub: "Full photo → real crop box → 32×32 pipeline input" },
+  { key: "embed",    title: "2. Watermark embedded", sub: "Real 32-bit payload → one encoder forward pass → bounded ±0.1 residual" },
+  { key: "diffmap",  title: "3. Perceptual diff",    sub: "|watermarked − original| × 10" },
+  { key: "decode",   title: "4. Decoder extraction", sub: "Bit error rate + image quality" },
+  { key: "zk",       title: "5. ZK proof (EZKL)",    sub: "Decoder circuit proved in zero knowledge" },
+  { key: "verify",   title: "6. Proof verification", sub: "Off-chain verifier checks the proof" },
+  { key: "anchor",   title: "7. On-chain anchor",    sub: "keccak256(proof) written on-chain; block shown from the receipt" },
+];
+
+const cropSelect = document.getElementById("cropSelect");
+const startBtn = document.getElementById("startBtn");
+const pipelineEl = document.getElementById("pipeline");
+const networkLabel = document.getElementById("networkLabel");
+
+const CROP_LABELS = {
+  foliage: "Tea plantation — foliage crop",
+  sky: "Tea plantation — sky crop",
+  sky_mountain_boundary: "Tea plantation — sky / mountain boundary crop",
+  fog_bank: "Fog image — fog bank crop (hard case)",
+  rock_texture: "Sun image — foreground rock texture crop",
+};
+
+const state = { network: null };
+let es = null;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function imgReady(img) {
+  if (img.complete && img.naturalWidth) return Promise.resolve();
+  return new Promise((res) => {
+    img.addEventListener("load", res, { once: true });
+    img.addEventListener("error", res, { once: true });
+  });
+}
+
+// Stage events can arrive back-to-back (crop/embed/diffmap/decode land within
+// milliseconds); serialise rendering so one stage's animation finishes before
+// the next stage paints over it.
+let renderChain = Promise.resolve();
+function enqueue(fn) {
+  renderChain = renderChain.then(fn).catch((err) => console.error(err));
+}
+
+async function loadCrops() {
+  try {
+    const res = await fetch("/crops");
+    const data = await res.json();
+    state.network = data.network;
+    cropSelect.innerHTML = "";
+    for (const name of data.crops) {
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = CROP_LABELS[name] || name;
+      cropSelect.appendChild(opt);
+    }
+    networkLabel.textContent = `${data.network} · ${data.contract.slice(0, 10)}…`;
+  } catch (e) {
+    networkLabel.textContent = "server unreachable";
+  }
+}
+
+function buildSkeleton() {
+  pipelineEl.innerHTML = "";
+  const cards = {};
+  for (const s of STAGES) {
+    const card = document.createElement("div");
+    card.className = "card pending";
+    card.id = `card-${s.key}`;
+    card.innerHTML = `
+      <div class="card-head">
+        <div class="stage-num">${STAGES.indexOf(s) + 1}</div>
+        <div class="card-title">${s.title}</div>
+      </div>
+      <div class="card-sub">${s.sub}</div>
+      <div class="card-body"></div>
+    `;
+    pipelineEl.appendChild(card);
+    cards[s.key] = card;
+  }
+  return cards;
+}
+
+async function animateCrop(body, data) {
+  // Fallback if the server predates the source-image payload.
+  if (!data.source_image || !data.source_w) {
+    body.innerHTML = `
+      <div class="images-row">
+        <div class="image-box">
+          <img src="${data.image}" alt="crop" />
+          <span>${escapeHtml(data.crop_name)} · box ${JSON.stringify(data.box)}</span>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const [l, t, r, b] = data.box;
+  const pL = (l / data.source_w) * 100;
+  const pT = (t / data.source_h) * 100;
+  const pW = ((r - l) / data.source_w) * 100;
+  const pH = ((b - t) / data.source_h) * 100;
+
+  body.innerHTML = `
+    <div class="crop-stage">
+      <div class="source-col">
+        <div class="source-wrap">
+          <img class="source-photo" src="${data.source_image}" alt="source photo" />
+          <div class="crop-highlight"></div>
+        </div>
+        <div class="source-cap">${escapeHtml(CROP_LABELS[data.crop_name] || data.crop_name)}
+          · ${data.source_w}×${data.source_h}px · crop box [${data.box.join(", ")}]</div>
+      </div>
+      <div class="crop-arrow">→</div>
+      <div class="image-box crop-out">
+        <img src="${data.image}" alt="32×32 crop" style="opacity:0" />
+        <span style="opacity:0">32×32 pipeline input</span>
+      </div>
+    </div>`;
+
+  const photo = body.querySelector(".source-photo");
+  const hl = body.querySelector(".crop-highlight");
+  const outImg = body.querySelector(".crop-out img");
+  const outCap = body.querySelector(".crop-out span");
+
+  await imgReady(photo);
+
+  // 1. highlight the whole frame, then slide/shrink it onto the real crop box.
+  hl.style.left = "0%"; hl.style.top = "0%";
+  hl.style.width = "100%"; hl.style.height = "100%";
+  hl.classList.add("visible");
+  hl.getBoundingClientRect(); // commit the full-frame position before transitioning
+  await sleep(450);
+
+  hl.style.left = pL + "%"; hl.style.top = pT + "%";
+  hl.style.width = pW + "%"; hl.style.height = pH + "%";
+  hl.classList.add("locked");
+  await sleep(1050); // 0.9s highlight transition + settle
+
+  // 2. fly the real cropped pixels from the box to the pipeline-input slot.
+  const bodyRect = body.getBoundingClientRect();
+  const hlRect = hl.getBoundingClientRect();
+  const slotRect = outImg.getBoundingClientRect();
+
+  const fly = document.createElement("img");
+  fly.src = data.image;
+  fly.className = "flying-crop";
+  fly.style.left = hlRect.left - bodyRect.left + "px";
+  fly.style.top = hlRect.top - bodyRect.top + "px";
+  fly.style.width = Math.max(hlRect.width, 6) + "px";
+  fly.style.height = Math.max(hlRect.height, 6) + "px";
+  body.appendChild(fly);
+  fly.getBoundingClientRect(); // reflow so the next assignment animates
+
+  fly.style.left = slotRect.left - bodyRect.left + "px";
+  fly.style.top = slotRect.top - bodyRect.top + "px";
+  fly.style.width = slotRect.width + "px";
+  fly.style.height = slotRect.height + "px";
+  await sleep(720);
+
+  outImg.style.opacity = "1";
+  outCap.style.opacity = "1";
+  fly.remove();
+}
+
+async function animateEmbed(body, data) {
+  const bits = Array.isArray(data.bits) ? data.bits : [];
+
+  body.innerHTML = `
+    <div class="embed-stage">
+      <div class="bit-panel">
+        <div class="bit-panel-label">32-bit message — the real payload embedded into this crop</div>
+        <div class="bit-grid"></div>
+      </div>
+      <div class="embed-reveal" style="opacity:0">
+        <div class="bit-strip"></div>
+        <div class="ba-label">Original crop &nbsp;⟷&nbsp; watermarked — drag to compare</div>
+        <div class="ba-slider">
+          <img class="ba-img ba-after" src="${data.image}" alt="watermarked" />
+          <img class="ba-img ba-before" src="${data.original_image || data.image}" alt="original" />
+          <div class="ba-divider"></div>
+          <input class="ba-range" type="range" min="0" max="100" value="50" aria-label="before/after" />
+          <span class="ba-tag ba-tag-l">original</span>
+          <span class="ba-tag ba-tag-r">watermarked</span>
+        </div>
+        <div class="embed-note">The encoder is a single forward pass — no iterative steps. It maps
+          these 32 bits to a residual bounded to ±0.1 per pixel, added to the crop.</div>
+      </div>
+    </div>`;
+
+  const grid = body.querySelector(".bit-grid");
+  const cells = bits.map((bit, i) => {
+    const c = document.createElement("span");
+    c.className = "bit " + (bit ? "one" : "zero");
+    c.style.setProperty("--i", i);
+    c.textContent = bit;
+    grid.appendChild(c);
+    return c;
+  });
+
+  // 1. reveal the real bits left-to-right.
+  for (let i = 0; i < cells.length; i++) {
+    cells[i].classList.add("in");
+    await sleep(20);
+  }
+  await sleep(300);
+
+  // 2. cascade them downward into the crop.
+  grid.classList.add("flow");
+  await sleep(650);
+
+  // 3. keep the same real bits on screen as a compact strip; reveal the slider.
+  body.querySelector(".bit-strip").textContent = bits.join("");
+  body.querySelector(".bit-panel").style.display = "none";
+  body.querySelector(".embed-reveal").style.opacity = "1";
+
+  const range = body.querySelector(".ba-range");
+  const before = body.querySelector(".ba-before");
+  const divider = body.querySelector(".ba-divider");
+  const sync = () => {
+    const v = +range.value;
+    before.style.clipPath = `inset(0 ${100 - v}% 0 0)`;
+    divider.style.left = v + "%";
+  };
+  range.addEventListener("input", sync);
+  sync();
+}
+
+function renderAnchor(body, data) {
+  const txCell = data.etherscan_url
+    ? `<a href="${data.etherscan_url}" target="_blank" rel="noopener">${escapeHtml(data.tx_hash)}</a>`
+    : escapeHtml(data.tx_hash);
+  const hasBlock = data.block_number != null;
+
+  const blockBadge = hasBlock
+    ? `<div class="new-block">
+         <div class="new-block-ico">⛏️</div>
+         <div class="new-block-info">
+           <div class="new-block-top">New block from tx receipt · ${escapeHtml(data.network)}</div>
+           <div class="new-block-num">block #${data.block_number}</div>
+           <div class="new-block-hash">${escapeHtml(data.block_hash)}</div>
+         </div>
+       </div>`
+    : "";
+
+  const blockRows = hasBlock
+    ? `<dt>Block</dt><dd>#${data.block_number}</dd>
+       <dt>Block hash</dt><dd>${escapeHtml(data.block_hash)}</dd>
+       <dt>Gas used</dt><dd>${data.gas_used != null ? data.gas_used : "—"}</dd>`
+    : "";
+
+  body.innerHTML = blockBadge + `
+    <dl class="anchor-grid">
+      <dt>Network</dt><dd>${escapeHtml(data.network)}</dd>
+      <dt>Contract</dt><dd>${escapeHtml(data.contract)}</dd>
+      <dt>Tx hash</dt><dd>${txCell}</dd>
+      ${blockRows}
+      <dt>assetId</dt><dd>${escapeHtml(data.asset_id)}</dd>
+      <dt>proofHash</dt><dd>${escapeHtml(data.proof_hash)}</dd>
+      <dt>Round-trip</dt><dd>${data.confirmed ? "✓ getAnchor confirmed" : "✗ mismatch"}</dd>
+    </dl>`;
+}
+
+async function renderStage(cards, stage, status, data, message) {
+  const card = cards[stage];
+  if (!card) return;
+  card.classList.remove("pending");
+  card.classList.add(status === "error" ? "error" : "done");
+  const body = card.querySelector(".card-body");
+
+  if (status === "error") {
+    body.innerHTML = `<div class="error-msg">✗ ${escapeHtml(message || "failed")}</div>`;
+    return;
+  }
+
+  switch (stage) {
+    case "crop":
+      await animateCrop(body, data);
+      break;
+    case "embed":
+      await animateEmbed(body, data);
+      break;
+    case "diffmap":
+      body.innerHTML = `
+        <div class="images-row">
+          <div class="image-box"><img src="${data.image}" alt="diff" /><span>amplified ×10</span></div>
+        </div>`;
+      break;
+    case "decode": {
+      const berGood = data.ber === 0;
+      body.innerHTML = `
+        <div class="stat-row">
+          <div class="stat ${berGood ? "good" : "bad"}"><div class="val">${data.ber.toFixed(4)}</div><div class="label">Bit error rate</div></div>
+          <div class="stat"><div class="val">${data.psnr.toFixed(2)} dB</div><div class="label">PSNR</div></div>
+        </div>`;
+      break;
+    }
+    case "zk":
+      body.innerHTML = `
+        <div class="stat-row">
+          <div class="stat"><div class="val">${data.logrows}</div><div class="label">logrows</div></div>
+          <div class="stat"><div class="val">${data.prove_time.toFixed(2)}s</div><div class="label">prove time</div></div>
+          <div class="stat"><div class="val">${(data.proof_bytes / 1000).toFixed(1)} kB</div><div class="label">proof size</div></div>
+        </div>`;
+      break;
+    case "verify":
+      body.innerHTML = `
+        <span class="verify-badge ${data.verify ? "pass" : "fail"}">
+          ${data.verify ? "✓ VERIFIED" : "✗ FAILED"}
+        </span>
+        <span style="margin-left:12px;color:var(--muted);font-size:0.85rem;">${data.verify_time.toFixed(2)}s</span>`;
+      break;
+    case "anchor":
+      renderAnchor(body, data);
+      break;
+  }
+}
+
+function escapeHtml(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+
+function startDemo() {
+  if (es) { es.close(); }
+  const crop = cropSelect.value;
+  const cards = buildSkeleton();
+  renderChain = Promise.resolve();
+
+  startBtn.disabled = true;
+  startBtn.textContent = "⏳ Running…";
+
+  es = new EventSource(`/run-demo?crop=${encodeURIComponent(crop)}`);
+
+  es.onmessage = (ev) => {
+    const payload = JSON.parse(ev.data);
+    enqueue(async () => {
+      if (payload.stage === "complete") {
+        const banner = document.createElement("div");
+        banner.className = "final-banner";
+        banner.textContent =
+          `✓ Pipeline complete — proof verified and anchored on ${state.network || "chain"}`;
+        pipelineEl.appendChild(banner);
+        finish();
+        return;
+      }
+      await renderStage(cards, payload.stage, payload.status, payload.data, payload.message);
+      if (payload.status === "error") finish();
+    });
+  };
+
+  es.onerror = () => {
+    finish();
+  };
+}
+
+function finish() {
+  startBtn.disabled = false;
+  startBtn.textContent = "▶ Start Demo";
+  if (es) { es.close(); es = null; }
+}
+
+startBtn.addEventListener("click", startDemo);
+loadCrops();
+</script>
+
+</body>
+</html>
